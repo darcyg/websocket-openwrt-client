@@ -1,7 +1,7 @@
 /*
  * libwebsockets-DTS2B-client - libwebsockets DTS2B implementation
  *
- * Copyright (C) 2015 mleaf_hexi <350983773@qq.com>
+ * Copyright (C) 2015 mleaf_hexi <350983773@qq.com> ,<mleaf90@gmail.com>
  *
  */
 #include <stdio.h>
@@ -13,6 +13,8 @@
 #include </usr/local/include/json/json.h>//json库头文件
 #include <uuid/uuid.h>//生成UUID相关头文件
 #include<sqlite3.h>//sqlite3库文件
+#include <libwebsockets.h>
+
 //串口相关头文件 
 #include <sys/types.h>  
 #include <sys/stat.h>  
@@ -22,15 +24,12 @@
 #include <sys/signal.h>  
 #include <pthread.h>
 
-
-
 char *errmsg=0;
 
 #ifdef CMAKE_BUILD
 #include "lws_config.h"
 #endif
 
-#include <libwebsockets.h>
 
 static unsigned int opts;
 static int was_closed;
@@ -53,10 +52,12 @@ volatile int STOP=FALSE_SERIAL;
 char send_wait_flag=0;
 #define use_signal 0
 #define use_select 1
+
 /******************
 *数据库相关文件定义
 *******************/
 sqlite3 *brxydatadb;
+
 /************************
 通信IP地址相关定义
 *************************/
@@ -64,7 +65,14 @@ char *get_ipaddr1;
 char *get_ipaddr2;
 char *get_ipindex1;
 char *get_ipindex2;
+char *use_ssl_set;
+
 static struct libwebsocket_context *context;
+
+//#define LOCAL_RESOURCE_PATH INSTALL_DATADIR"/libwebsockets-test-server"
+#define LOCAL_RESOURCE_PATH "/libwebsockets-test-server"
+
+char *resource_path = LOCAL_RESOURCE_PATH;
 
 /*设备状态相关宏定义*/
 #define ONLINE 1          //在线，表示 设备已连接 打开且工作正常
@@ -116,8 +124,8 @@ static struct libwebsocket_context *context;
 /*sqlite3相关函数*/
 /*
 *插入数据到sqlite3 数据库
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 void insert_data(sqlite3 *db)
 {
@@ -136,7 +144,7 @@ void insert_data(sqlite3 *db)
     printf("input the score ");
     scanf("%d",&score);
     getchar();
-    char *sql=sqlite3_mprintf("insert into student values('%d','%s','%d','%d')",number,name,age,score);
+    char *sql=sqlite3_mprintf("insert into RFID values('%d','%s','%d','%d')",number,name,age,score);
     if(sqlite3_exec(db,sql,NULL,NULL,&errmsg) != SQLITE_OK)
     {
         perror("sqlite3_exec");
@@ -149,8 +157,8 @@ void insert_data(sqlite3 *db)
  
  /*
  *删除sqlite3 数据库number 位置的数据
- *author  mleaf_hexi
- *mail:350983773@qq.com
+ *Author  mleaf_hexi
+ *Mail:350983773@qq.com
  */
 void delete_data(sqlite3 *db)
 {
@@ -159,7 +167,7 @@ void delete_data(sqlite3 *db)
     scanf("%d",&num);
     getchar();
 	//删除从student数据库表number开头的
-    char *sql=sqlite3_mprintf("delete from student where number ='%d'",num);
+    char *sql=sqlite3_mprintf("delete from RFID where number ='%d'",num);
  
     if(sqlite3_exec(db,sql,NULL,NULL,&errmsg) != SQLITE_OK)
     {
@@ -174,14 +182,14 @@ void delete_data(sqlite3 *db)
  
  /*
  *更新sqlite3 数据库数据
- *author  mleaf_hexi
- *mail:350983773@qq.com
+ *Author  mleaf_hexi
+ *Mail:350983773@qq.com
  */
-void updata_data(char ipaddr1[40],char ipaddr2[40],char ipindex1[40],char ipindex2[40])
+void updata_ipaddr_data(char ipaddr1[40],char ipaddr2[40],char ipindex1[40],char ipindex2[40],char use_ssl[3])
 {
     int num=1;
  
-  	char *sql12=sqlite3_mprintf("update ipaddr set ipaddr1='%s',ipaddr2='%s',ipindex1='%s',ipindex2='%s' where number='%d'",ipaddr1,ipaddr2,ipindex1,ipindex2,num);
+  	char *sql12=sqlite3_mprintf("update ipaddr set ipaddr1='%s',ipaddr2='%s',ipindex1='%s',ipindex2='%s',use_ssl='%s' where number='%d'",ipaddr1,ipaddr2,ipindex1,ipindex2,use_ssl,num);
   	printf("sqlite3_exec=%d\n",sqlite3_exec(brxydatadb,sql12,NULL,NULL,&errmsg));
 	if(sqlite3_exec(brxydatadb,sql12,NULL,NULL,&errmsg) != SQLITE_OK)
     {
@@ -189,14 +197,14 @@ void updata_data(char ipaddr1[40],char ipaddr2[40],char ipindex1[40],char ipinde
         exit(-1);
     }
     else
-        printf("update success!!\n");
+        printf("ipaddr update success!!\n");
     return;
  
 }
 /*
 *显示sqlite3 数据库数据
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
  
 void get_sqlite3_ipaddr_data(void)
@@ -226,16 +234,18 @@ void get_sqlite3_ipaddr_data(void)
 	{
 		printf( "resultp[%d] = %s\n", i , resultp[i] );
 	}
-	get_ipaddr1=resultp[6];
-	get_ipaddr2=resultp[7];
-	get_ipindex1=resultp[8];
-	get_ipindex2=resultp[9];
+	//获取数据库里ipaddr的信息
+	get_ipaddr1=resultp[7];
+	get_ipaddr2=resultp[8];
+	get_ipindex1=resultp[9];
+	get_ipindex2=resultp[10];
+	use_ssl_set=resultp[11];
     return ;
 }
 /*
 *退出sqlite3 数据库
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 
 void quit_sqlite3(void)
@@ -246,8 +256,8 @@ void quit_sqlite3(void)
 }
 /*
 *sqlite3 数据库初始化程序
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 
 int sqlite3_init(void)
@@ -260,7 +270,7 @@ int sqlite3_init(void)
 	char *ipaddr2;
 	char *ipindex1;
 	char *ipindex2;
-	
+	char *use_ssl;
     if(sqlite3_open("brxydata.db",&brxydatadb) != SQLITE_OK)
     {
         perror("sqlite3_open");
@@ -268,32 +278,33 @@ int sqlite3_init(void)
     }
 	//必须先创建数据库表 不然不能添加成员
 	//创建数据库表
-	const char *SQL1="create table if not exists ipaddr(number,ipaddr1 varchar(40),ipaddr2 varchar(40),ipindex1 varchar(40),ipindex2 varchar(40));";
-/*int sqlite3_exec(
-*	  sqlite3* ppDb,                                          //An open database 
-*	  const char *sql,                                        //SQL to be evaluated 
-* 	  int (*callback)(void*,int,char**,char**), //Callback function 
-*	  void *,                                                    //1st argument to callback 
-*	  char **errmsg                                        // Error msg written here
-*	);
-*/
-#if 0
-	//执行建表
+	const char *SQL1="create table if not exists ipaddr(number,ipaddr1 varchar(40),ipaddr2 varchar(40),ipindex1 varchar(40),ipindex2 varchar(40),use_ssl varchar(3));";
+	/*int sqlite3_exec(
+	*	  sqlite3* ppDb,                                          //An open database 
+	*	  const char *sql,                                        //SQL to be evaluated 
+	* 	  int (*callback)(void*,int,char**,char**), //Callback function 
+	*	  void *,                                                    //1st argument to callback 
+	*	  char **errmsg                                        // Error msg written here
+	*	);
+	*/
+
+	//执行建表 
     ret = sqlite3_exec(brxydatadb,SQL1,0,0,&errmsg);
     if(ret != SQLITE_OK)
     {
         fprintf(stderr,"SQL Error:%s\n",errmsg);
         sqlite3_free(errmsg);
     }
- 
-  //插入数据
+#if 0
+  //插入数据  只插入数据一次 不然在每一次运行程序的时候数据库中的相同内容会增多
   	number=1;
 	ipaddr1="192.168.6.114";
 	ipaddr2="192.168.6.176";
 	ipindex1="/";
 	ipindex2="/websocket";
-  char *sqlipaddr=sqlite3_mprintf("insert into ipaddr values('%d','%s','%s','%s','%s')",number,ipaddr1,ipaddr2,ipindex1,ipindex2);
-  //char *sqlipaddr=sqlite3_mprintf("update ipaddr set ipaddr1='%s',ipaddr2='%s',ipindex1='%s',ipindex2='%s' where number='%d'",ipaddr1,ipaddr2,ipindex1,ipindex2,number);
+	use_ssl="ws";
+  char *sqlipaddr=sqlite3_mprintf("insert into ipaddr values('%d','%s','%s','%s','%s','%s')",number,ipaddr1,ipaddr2,ipindex1,ipindex2,use_ssl);
+  //char *sqlipaddr=sqlite3_mprintf("update ipaddr set ipaddr1='%s',ipaddr2='%s',ipindex1='%s',ipindex2='%s',use_ssl='%s' where number='%d'",ipaddr1,ipaddr2,ipindex1,ipindex2,use_ssl,number);
   	
 	if(sqlite3_exec(brxydatadb,sqlipaddr,NULL,NULL,&errmsg) != SQLITE_OK)
     {
@@ -309,8 +320,8 @@ int sqlite3_init(void)
 
 /*
 *获取随机数UUID
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 static unsigned char* uuidget(char str[36])
 {
@@ -326,8 +337,8 @@ static unsigned char* uuidget(char str[36])
 *2.1.1	上报DTS状态
 *返回类型: unsigned char*
 *返回值: json格式数据
-*author: mleaf_hexi
-*mail:350983773@qq.com
+*Author: mleaf_hexi
+*Mail:350983773@qq.com
 */
 static unsigned char* reportDeviceStatus(void)
 {
@@ -552,8 +563,8 @@ static unsigned char* reportDeviceStatus(void)
 * 2.1.2	上传DTS日志
 *返回类型: unsigned char*
 *返回值: json格式数据
-*author:  mleaf_hexi
-*mail:350983773@qq.com
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
 */
 static unsigned char* reportDeviceLog(void) 
 {
@@ -609,8 +620,8 @@ static unsigned char* reportDeviceLog(void)
 *2.1.3	上报DTS运行信息
 *返回类型: unsigned char*
 *返回值: json格式数据
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 
 static unsigned char* reportDeviceRuntimeInfo(void)
@@ -875,8 +886,8 @@ static unsigned char* reportDeviceRuntimeInfo(void)
 *2.1.4	激活DTS设备
 *返回类型: unsigned char*
 *返回值: json格式数据
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 static unsigned char* requestActiveDtsDevice()
 {
@@ -961,8 +972,8 @@ static unsigned char* requestActiveDtsDevice()
 *2.1.5	上报RFID 刷卡考勤
 *返回类型: unsigned char*
 *返回值: json格式数据
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 static unsigned char*reportDtsRfidCheckOnData()
 {
@@ -1063,8 +1074,8 @@ static unsigned char*reportDtsRfidCheckOnData()
 *2.1.6	请求同步DTS配置
 *返回类型: unsigned char*
 *返回值: json格式数据
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 *
 */
 static unsigned char* RequestSyncDtsAllConfigOptions(void)
@@ -1124,8 +1135,8 @@ static unsigned char* RequestSyncDtsAllConfigOptions(void)
 *2.1.7	请求同步RFID权限
 *返回类型: unsigned char*
 *返回值: json格式数据
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */
 
 static unsigned char* RequestSyncDtsAllRfidPermission(void)
@@ -1241,8 +1252,8 @@ static void json_print_object(json_object *obj);
 *返回类型: none
 *返回值: none
 *传入参数json_object *类型
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */ 
 static void json_print_value(json_object *obj) 
 {
@@ -1295,8 +1306,8 @@ static void json_print_value(json_object *obj)
 *返回类型: none
 *返回值: none
 *传入参数json_object *类型
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */ 
 static void json_print_array(json_object *obj) 
 {
@@ -1316,8 +1327,8 @@ static void json_print_array(json_object *obj)
 *返回类型: none
 *返回值: none
 *传入参数json_object *类型
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 */ 
 static void json_print_object(json_object *obj) 
 {
@@ -1331,6 +1342,7 @@ static void json_print_object(json_object *obj)
 	int i;
 	char buff[50],buff2[50];
 	char *valueaddr1,*valueaddr2;
+	char *use_ssl_get;
 	if(!obj) return;
 	//遍历json对象的key和值 
 	//Linux内核2.6.29，说明了strtok()已经不再使用，由速度更快的strsep()代替。
@@ -1353,6 +1365,7 @@ static void json_print_object(json_object *obj)
 				name = strsep(&value,":"); // 以":"分割字符串,这时strsep函数返回值为 "wss",即":"号之前的字符串
 				next =value; // 这时指针value指向":"号后面的字符串,即 //area1.dts.mpush.brxy-cloud.com/websocket/connHandler/v2.0,wss: //primary.dts.mpush.brxy-cloud.com/websocket/connHandler/v2.0
 				printf(" name= %s\n",name); //打印出一轮分割后name的值
+				use_ssl_get=name;
 				name = strsep(&value,"/");// 这时通过"/"分割字符串
 				next =value; 
 				name = strsep(&value,"/");//去掉第二个/
@@ -1383,7 +1396,9 @@ static void json_print_object(json_object *obj)
 				
 				value=next;
 			}
-			updata_data(valueaddr1,valueaddr2,buff2,buff);//将接收到的通信url更新到数据库中
+			printf("use_ssl_get= %s\n",use_ssl_get);
+			updata_ipaddr_data(valueaddr1,valueaddr2,buff2,buff,use_ssl_get);//将接收到的通信url更新到数据库中
+			
 //			char *source = strdup(s); 
 //			char *token;  
 //			for(token = strsep(&source, delim); token != NULL; token = strsep(&source, delim)) 
@@ -1548,11 +1563,11 @@ static struct libwebsocket_protocols protocols[] = {
 
 void signal_handler_IO(int status);
 
-/*
+/*****************************
 *打开串口并初始化设置
-*author  mleaf_hexi
-*mail:350983773@qq.com
-*/ 
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
+*****************************/ 
 init_serial(void)  
 {  
 	struct sigaction saio; /*definition of signal axtion */
@@ -1584,7 +1599,7 @@ init_serial(void)
     /**3. 设置新属性，TCSANOW：所有改变立即生效*/  
     tcflush(serial_fd, TCIFLUSH);//溢出数据可以接收，但不读  
     tcsetattr(serial_fd, TCSANOW, &options);  
-#if 1
+#if 0
     //信号相关设置
 	/* install the signal handle before making the device asynchronous*/
 	saio.sa_handler = signal_handler_IO;
@@ -1603,14 +1618,14 @@ init_serial(void)
     return 0;  
 }  
   
-/** 
+/************************ 
 *串口发送数据 
 *@fd:串口描述符 
 *@data:待发送数据 
 *@datalen:数据长度 
-*author  mleaf_hexi
-*mail:350983773@qq.com
-*/  
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
+*************************/  
 int uart_send(int fd, char *data, int datalen)  
 {  
   int len = 0;	
@@ -1624,10 +1639,10 @@ int uart_send(int fd, char *data, int datalen)
 	
   return 0;  
 } 
-/**************** 
+/************************ 
 *串口发送数据 测试
-*author  mleaf_hexi
-*mail:350983773@qq.com
+*Author  mleaf_hexi
+*Mail:350983773@qq.com
 *************************/
 
 void serial_test_send(char *buf1)
@@ -1643,13 +1658,13 @@ void serial_test_send(char *buf1)
  printf("\n");	
  
 }
-/**************** 
+/************************ 
 *串口接收数据 测试 通过signal机制读取数据
-*author:  mleaf_hexi
-*mail:350983773@qq.com
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
 *************************/
 
-void serial_test_receive(void){
+int serial_test_receive(void){
 	char buf[255];
 	int res;
 	int i=0;
@@ -1665,14 +1680,19 @@ void serial_test_receive(void){
 		printf("res=%d\n",res);
 		printf("Serial Received=%d,%s\n",res,buf);
 		wait_flag = TRUE_SERIAL; /*wait for new input*/
+		return 1;
+	}
+	else
+	{
+		return 0;
 	}
 
 }
-/**************** 
+/************************************************************************ 
 *串口接收数据 测试 通过select系统调用进行io多路切换，实现异步读取串口数据
-*author:  mleaf_hexi
-*mail:350983773@qq.com
-*************************/
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
 void serial_select_receive(void){
 
 	char buf[255];
@@ -1702,10 +1722,10 @@ void serial_select_receive(void){
 }
 
 
-/******************************************
+/****************************************************
 *信号处理函数，设备wait_flag=FASLE
-*author:  mleaf_hexi
-*mail:350983773@qq.com
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
 *
 ******************************************************/
 void signal_handler_IO(int status)
@@ -1724,40 +1744,79 @@ void signal_handler_IO(int status)
 	 wait_flag = FALSE_SERIAL;//标志位置位开始接收数据
 	 printf("wait_flag=FALSE_SERIAL\n");
    }
-   
+
 }
-//多线程处理函数
-//void* Serial_Thread(void)
-//{	
-//	char buf[255];
-//	int res;
 
-//	//printf("Serial Thread Test\n");
-//	while(1)
-//	{
-//		if(wait_flag == FALSE_SERIAL)
-//		   {	
+/************************ 
+*多线程处理函数
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************/
+/********************************************************************************************************
+多线程调试记录:
+1:使用信号触发方式接收串口 会导致多线程只运行一次就不能接收串口数据了。目前原因不明。
+2:在线程函数中通过select系统调用进行io多路切换，实现异步读取串口数据，能稳定接收数据，保持串口不掉。
+*********************************************************************************************************/
+void* Serial_Thread(void)
+{	
+	char buf[255];
+	int res;
 
-//				memset(buf,0,255);
-//				res = read(serial_fd,buf,255);
-//				printf("res=%d\n",res);
-//				printf("Serial Received=%d,%s\n",res,buf);
-//				wait_flag = TRUE_SERIAL; /*wait for new input*/
-//			}
-//	}
-//}
+	printf("Serial Thread Test\n");
+#if 0	
+	if(wait_flag == FALSE_SERIAL)
+	   {	
 
+			memset(buf,0,255);
+			res = read(serial_fd,buf,255);
+			printf("res=%d\n",res);
+			printf("Serial Received=%d,%s\n",res,buf);
+			wait_flag = TRUE_SERIAL; /*wait for new input*/
+		}
+#endif
+	while(1)
+	{
+		serial_select_receive();
+	}
+
+
+}
+/************************ 
+*websocket 连接函数
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************/
 int libwebsockets_connect_one(void)
 {	
+	
+	char cert_path[1024];
+	char key_path[1024];
+
 	int use_ssl = 0;
 	int ret = 0;
+	int connect_error=0;
 	int ietf_version = -1; /* latest */
+	char *use_ssl_ws="ws";
+	char *use_ssl_wss="wss";
 
 	struct lws_context_creation_info info;
 	struct libwebsocket *wsi_dumb;
 	//	int port = 8543;
 		int port = 9000;
 	memset(&info, 0, sizeof info);
+	
+	if(strcmp(use_ssl_set,use_ssl_ws)==0)//判断是否使用加密
+		{
+			use_ssl=0;
+			printf("use_ssl = %d\n",use_ssl);
+			printf("We do not use ssl\n");
+			
+		}
+	else if(strcmp(use_ssl_set,use_ssl_wss)==0)
+		{
+			use_ssl=2;
+			printf("use_ssl = %d\n",use_ssl);
+		}
 
 	/*
 	 * create the websockets context.  This tracks open connections and
@@ -1772,6 +1831,31 @@ int libwebsockets_connect_one(void)
 #ifndef LWS_NO_EXTENSIONS
 	info.extensions = libwebsocket_get_internal_extensions();
 #endif
+	/****************
+	*****use ssl******
+	*****************/
+	if (!use_ssl) {
+		info.ssl_cert_filepath = NULL;
+		info.ssl_private_key_filepath = NULL;
+	} else {
+		if (strlen(resource_path) > sizeof(cert_path) - 32) {
+			lwsl_err("resource path too long\n");
+			return -1;
+		}
+		sprintf(cert_path, "%s/libwebsockets-test-server.pem",
+								resource_path);
+		if (strlen(resource_path) > sizeof(key_path) - 32) {
+			lwsl_err("resource path too long\n");
+			return -1;
+		}
+		sprintf(key_path, "%s/libwebsockets-test-server.key.pem",
+								resource_path);
+
+		info.ssl_cert_filepath = cert_path;
+		info.ssl_private_key_filepath = key_path;
+	}
+
+
 	info.gid = -1;
 	info.uid = -1;
 
@@ -1830,19 +1914,42 @@ TITLE:	libwebsocket_client_connect - Connect to another websocket server
 	return 0;
 
 }
+/****************************************************************************** 
+*websocket 连接函数 如果连接失败则调用libwebsockets_connect_one 尝试第二次连接
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+********************************************************************************/
+
 int libwebsockets_connect_two(void)
 {
+	char cert_path[1024];
+	char key_path[1024];
+
 	int use_ssl = 0;
 	int ret = 0;
 	int connect_error=0;
 	int ietf_version = -1; /* latest */
+	char *use_ssl_ws="ws";
+	char *use_ssl_wss="wss";
 
 	struct lws_context_creation_info info;
 	struct libwebsocket *wsi_dumb;
 	//	int port = 8543;
 		int port = 9000;
 	memset(&info, 0, sizeof info);
-
+	
+	if(strcmp(use_ssl_set,use_ssl_ws)==0)//判断是否使用加密
+		{
+			use_ssl=0;
+			printf("use_ssl = %d\n",use_ssl);
+			printf("We do not use ssl\n");
+			
+		}
+	else if(strcmp(use_ssl_set,use_ssl_wss)==0)
+		{
+			use_ssl=2;
+			printf("use_ssl = %d\n",use_ssl);
+		}
 	/*
 	 * create the websockets context.  This tracks open connections and
 	 * knows how to route any traffic and which protocol version to use,
@@ -1856,6 +1963,31 @@ int libwebsockets_connect_two(void)
 #ifndef LWS_NO_EXTENSIONS
 	info.extensions = libwebsocket_get_internal_extensions();
 #endif
+	/********************
+	*****use ssl**********
+	*********************/
+	if (!use_ssl) {
+		info.ssl_cert_filepath = NULL;
+		info.ssl_private_key_filepath = NULL;
+	} else {
+		if (strlen(resource_path) > sizeof(cert_path) - 32) {
+			lwsl_err("resource path too long\n");
+			return -1;
+		}
+		sprintf(cert_path, "%s/libwebsockets-test-server.pem",
+								resource_path);
+		if (strlen(resource_path) > sizeof(key_path) - 32) {
+			lwsl_err("resource path too long\n");
+			return -1;
+		}
+		sprintf(key_path, "%s/libwebsockets-test-server.key.pem",
+								resource_path);
+
+		info.ssl_cert_filepath = cert_path;
+		info.ssl_private_key_filepath = key_path;
+	}
+
+
 	info.gid = -1;
 	info.uid = -1;
 
@@ -1898,6 +2030,7 @@ TITLE:	libwebsocket_client_connect - Connect to another websocket server
 		This function creates a connection to a remote server 
 
 	*/
+	
 	fprintf(stderr, "Connecting to %s:%u\n", get_ipaddr1, port);
 	wsi_dumb = libwebsocket_client_connect(context, get_ipaddr1, port, use_ssl,
 			get_ipindex1, get_ipaddr1,"origin",
@@ -1911,7 +2044,7 @@ TITLE:	libwebsocket_client_connect - Connect to another websocket server
 		
 	}
 	if(connect_error==1)
-	{	
+	{	printf("Use other url connection\n");
 		connect_error=0;
 		libwebsockets_connect_one();//第一个URL连接失败后调用第二个
 	}
@@ -1919,43 +2052,35 @@ TITLE:	libwebsocket_client_connect - Connect to another websocket server
 	return 0;
 
 }
+/************************ 
+*主函数
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************/
 
 int main(int argc, char **argv)
 {
 	int n = 0;
-	
-
-	
-
-//	const char *address="192.168.6.176";
-//	const char *address="192.168.6.114";
-
-
-	
 
 	//多线程定义
-	//pthread_t Serial_ID;
+	pthread_t Serial_ID;
 			
-	
 	char buf1[]="hello world mleaf test";  //串口发送的数据
 	init_serial();	 /*初始化串口*/
 	sqlite3_init();//sqlite3数据库初始化
-	get_sqlite3_ipaddr_data();//获取IP地址信息
-
-	
-
+	get_sqlite3_ipaddr_data();//获取IP地址信息等	
 
 	fprintf(stderr, "DTS2B websockets client\n"
-			"(C) Copyright 2014-2015 Mleaf_HEXI <350983773@qq.com> "
+			"(C) Copyright 2014-2015 Mleaf_HEXI <350983773@qq.com>"
 						    "licensed under LGPL2.1\n");
-
 
 	libwebsockets_connect_two();//连接服务端
 	
 	serial_test_send(buf1);//串口发送测试
 
-	
-//	pthread_create(&Serial_ID, NULL, &Serial_Thread, NULL);//建立线程
+	if (!fork())
+	{
+		pthread_create(&Serial_ID, NULL, &Serial_Thread, NULL);//建立线程
 
 		/*
 		 * sit there servicing the websocket context to handle incoming
@@ -1963,25 +2088,26 @@ int main(int argc, char **argv)
 		 * nothing happens until the client websocket connection is
 		 * asynchronously established
 		 */
-		
-	n = 0;
-	while (n >= 0 && !was_closed && !force_exit) 
+		while(1)
 		{
-			n = libwebsocket_service(context, 100);
-			serial_test_receive();//串口接收
-			
+			n = 0;
+			while (n >= 0 && !was_closed && !force_exit) 
+				{
+					n = libwebsocket_service(context, 100);
+					//serial_test_receive();//串口接收
 
-			if (n < 0)
-				continue;
+					if (n < 0)
+						continue;
 
-			if (wsi_mirror)
-				continue;		
+					if (wsi_mirror)
+						continue;		
+				}
 		}
+	}
 bail:
 	fprintf(stderr, "websocket Exiting\n");
 	close(serial_fd);//关闭串口
 	quit_sqlite3();//关闭SQLITE3数据库
 	libwebsocket_context_destroy(context);//退出websocket
-
 	return 1;
 }

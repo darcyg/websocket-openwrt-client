@@ -336,6 +336,14 @@ int sqlite3_init(void)
 /**************************
 时间相关的数据库操作函数
 ***************************/
+/************************************************************************ 
+*函数名:updata_timeused_data更新使用时间到数据库
+*Version 1.0 
+*Created on: 2015-2-2 
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
+
 void updata_timeused_data(long start_time,long end_time,long timeused)
 {
 	int num=1;
@@ -352,6 +360,14 @@ void updata_timeused_data(long start_time,long end_time,long timeused)
 
  
 }
+/************************************************************************ 
+*函数名:sqlite3_timeused_init初始化程序使用时间数据库表
+*Version 1.0 
+*Created on: 2015-2-2 
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
+
 void sqlite3_timeused_init(void)
 {
 
@@ -395,6 +411,14 @@ void sqlite3_timeused_init(void)
 #endif
 
 }
+/************************************************************************ 
+*函数名:get_sqlite3_timeused_data 获取数据库中保存的程序的使用时间
+*Version 1.0 
+*Created on: 2015-2-2 
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
+
 void get_sqlite3_timeused_data(void)
 {
     char ** resultp;
@@ -426,6 +450,13 @@ void get_sqlite3_timeused_data(void)
 	timeused_old=resultp[7];
 
 }
+/************************************************************************ 
+*函数名:get_start_time 获取程序开始时的时间以毫秒为单位
+*Version 1.0 
+*Created on: 2015-2-2 
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
 
 void get_start_time(void)
 {
@@ -436,6 +467,13 @@ void get_start_time(void)
 	printf("Start time: %ld ms\n", start_time);
 
 }
+/************************************************************************ 
+*函数名:get_end_time 获取程序结束时的时间以毫秒为单位
+*Version 1.0 
+*Created on: 2015-2-2 
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
 
 void get_end_time(void)
 {
@@ -446,6 +484,14 @@ void get_end_time(void)
 		printf("End time: %ld ms\n", end_time);
 
 }
+/************************************************************************ 
+*函数名:time_get_init  初始化时间存储
+*Version 1.0 
+*Created on: 2015-2-2 
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
+
 void time_get_init()
 {
 	sqlite3_timeused_init();//初始化时间存储数据库
@@ -463,6 +509,14 @@ void time_get_init()
 	}
 
 }
+/************************************************************************ 
+*函数名:time_get_end  处理程序结束时和开始的时间差
+*Version 1.0 
+*Created on: 2015-2-2 
+*Author:  mleaf_hexi
+*Mail:350983773@qq.com
+*************************************************************************/
+
 void time_get_end()
 {
 	long cost_time = 0;
